@@ -1,0 +1,104 @@
+/* ./src/style/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Parallax Background */
+.parallax {
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center;
+}
+.step-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem; /* 20px */
+  font-weight: bold;
+  color: white;
+  margin-right: 16px;
+}
+.chat-bubble {
+  position: relative;
+  padding: 10px;
+  border-radius: 20px;
+}
+
+.chat-bubble:after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10px;
+  border-width: 10px;
+  border-style: solid;
+  border-color: transparent transparent gray transparent;
+}
+
+.chat-bubble.bg-blue-500:after {
+  border-color: transparent transparent #3b82f6 transparent;
+}
+
+.chat-input-container {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+}
+
+.emoji-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 24px;
+    margin-right: 10px;
+}
+
+.emoji-picker {
+    position: absolute;
+    bottom: 50px;
+    right: 50px;
+    z-index: 100;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+.send-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 15px;
+    margin-left: 10px;
+    cursor: pointer;
+}
+.bg-blue-500 {
+  background-color: #3b82f6;
+}
+
+.bg-green-500 {
+  background-color: #10b981;
+}
+
+.bg-yellow-500 {
+  background-color: #f59e0b;
+}
+
+.bg-red-500 {
+  background-color: #ef4444;
+}
+
+.bg-purple-500 {
+  background-color: #a855f7;
+}

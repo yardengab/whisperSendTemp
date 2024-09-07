@@ -1,0 +1,232 @@
+import { createContext } from "preact";
+import { useState, useEffect } from "preact/hooks";
+import Peer from "peerjs";
+import { handleReceiveMessage, handleReceiveFile } from "../utils/chatActions";
+import { peerConfig } from "../utils/config";
+import { ethers } from "ethers";
+import ConfirmModal from "../components/ConfirmModal";
+import { toast } from "react-toastify";
+
+export const PeerIdContext = createContext();
+
+export const PeerIdProvider = ({ children }) => {
+    const [peer, setPeer] = useState(null);
+    const [connection, setConnection] = useState(null);
+    const [recipient, setRecipient] = useState("");
+    const [messages, setMessages] = useState([]);
+    const [message, setMessage] = useState("");
+    const [myWallet, setMyWallet] = useState(null);
+    const [recipientPeerId, setRecipientPeerId] = useState("");
+    const [peerId, setPeerId] = useState("");
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmCallback, setConfirmCallback] = useState(null);
+    const [confirmModalData, setConfirmModalData] = useState({ title: "", message: "" });
+    const [pendingConnection, setPendingConnection] = useState(null);
+
+    useEffect(() => {
+        const newWallet = ethers.Wallet.createRandom();
+        const { publicKey } = newWallet;
+        setMyWallet(newWallet);
+        setPeerId(publicKey);
+        console.log("Wallet created with public key:", publicKey);
+    }, []);
+
+    useEffect(() => {
+        if (!myWallet) return;
+
+        const pr = new Peer(myWallet.publicKey, peerConfig);
+        setPeer(pr);
+        console.log("Peer created with ID:", myWallet.publicKey);
+
+        return () => {
+            pr.destroy();
+            console.log("Peer destroyed");
+        };
+    }, [myWallet]);
+
+    useEffect(() => {
+        if (!peer) return;
+
+        peer.on("connection", (con) => {
+            console.log("Connection received from peer:", con.peer);
+            con.on("open", async () => {
+                console.log("Connection opened with peer:", con.peer);
+                
+                const confirmed = await openConfirmModal(
+                    "Incoming Connection",
+                    `Do you want to accept the connection request from ${con.peer}?`
+                );
+
+                if (confirmed) {
+                    setRecipient(con.peer);
+                    setRecipientPeerId(con.peer);
+                    setConnection(con);
+                    con.send(JSON.stringify({ type: "connection_accepted" }));
+                } else {
+                    con.send(JSON.stringify({ type: "connection_rejected" }));
+                    con.close();
+                }
+            });
+        });
+    }, [peer]);
+
+    useEffect(() => {
+        if (!connection) return;
+
+        connection.on("data", function (data) {
+            handleData(data);
+        });
+        connection.on("close", () => {
+            disconnect();
+        });
+        connection.on("error", (err) => {
+            console.error("Connection error:", err);
+            toast.error("Connection error occurred.");
+        });
+    }, [connection]);
+
+    const connectRecipient = async (e) => {
+        e.preventDefault();
+        if (connection) {
+            disconnect();
+        } else {
+            const confirmed = await openConfirmModal(
+                "Outgoing Connection",
+                `Do you want to connect to ${recipient}?`
+            );
+
+            if (confirmed) {
+                const con = peer.connect(recipient);
+                setPendingConnection(con);
+
+                con.on("open", () => {
+                    con.send(JSON.stringify({ type: "connection_request" }));
+                });
+
+                con.on("data", (data) => {
+                    const parsedData = JSON.parse(data);
+                    if (parsedData.type === "connection_accepted") {
+                        setConnection(con);
+                        setRecipientPeerId(recipient);
+                        setPendingConnection(null);
+                        toast.success("Connection accepted!");
+                    } else if (parsedData.type === "connection_rejected") {
+                        toast.error("Connection request was rejected.");
+                        con.close();
+                        setPendingConnection(null);
+                    }
+                });
+
+                con.on("error", (err) => {
+                    console.error("Connection error:", err);
+                    toast.error("Could not connect to the recipient. The recipient might be offline.");
+                    setPendingConnection(null);
+                });
+                
+                setTimeout(() => {
+                    if (!con.open) {
+                        toast.error("Recipient is not available.");
+                        con.close();
+                        setPendingConnection(null);
+                    }
+                }, 10000); // Timeout after 10 seconds if no response
+            }
+        }
+    };
+
+    const disconnect = () => {
+        if (connection) {
+            connection.close();
+            setConnection(null);
+        }
+        if (pendingConnection) {
+            pendingConnection.close();
+            setPendingConnection(null);
+        }
+        setRecipient("");
+        setRecipientPeerId("");
+        setMessages([]);
+        setMessage("");
+    };
+
+    const openConfirmModal = (title, message) => {
+        return new Promise((resolve) => {
+            setConfirmCallback(() => resolve);
+            setConfirmModalData({ title, message });
+            setShowConfirmModal(true);
+        });
+    };
+
+    const closeConfirmModal = (confirmed) => {
+        setShowConfirmModal(false);
+
+        if (confirmCallback) {
+            confirmCallback(confirmed);
+        }
+    };
+
+    const handleData = (data) => {
+        try {
+            const parsedData = JSON.parse(data);
+
+            if (parsedData.messageType === "file") {
+                handleReceiveFile(
+                    messages,
+                    setMessages,
+                    myWallet.privateKey,
+                    recipientPeerId,
+                    parsedData,
+                    openConfirmModal
+                );
+            } else if (parsedData.messageType === "text") {
+                handleReceiveMessage(
+                    setMessages,
+                    myWallet.privateKey,
+                    recipientPeerId,
+                    data
+                );
+            } else {
+                console.log("Unknown messageType received");
+            }
+        } catch (error) {
+            handleReceiveMessage(
+                setMessages,
+                myWallet.privateKey,
+                recipientPeerId,
+                data
+            );
+        }
+    };
+
+    return (
+        <PeerIdContext.Provider
+            value={{
+                peer,
+                connectRecipient, // השתמש בפונקציה הזו בלבד לחיבור
+                disconnect,
+                connection,
+                recipient,
+                setRecipient,
+                messages,
+                setMessages,
+                message,
+                setMessage,
+                myWallet,
+                peerId,
+                recipientPeerId,
+                setRecipientPeerId,
+                openConfirmModal,
+            }}
+        >
+            {children}
+            {showConfirmModal && (
+                <ConfirmModal
+                    title={confirmModalData.title}
+                    message={confirmModalData.message}
+                    onConfirm={() => closeConfirmModal(true)}
+                    onCancel={() => closeConfirmModal(false)}
+                />
+            )}
+        </PeerIdContext.Provider>
+    );
+};
